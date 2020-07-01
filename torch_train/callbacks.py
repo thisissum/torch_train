@@ -73,14 +73,16 @@ class EarlyStopingCallback(Callback):
         delta: float, if new metric is in delta range of old metric, no improved
         patience: int, times to wait for improved
     """
-    def __init__(self, mode='max', delta=0, patience=5, path='./checkpoint/last_best.pt'):
+    def __init__(self, metric_name, mode='max', delta=0, patience=5, path='./checkpoint/last_best.pt'):
         super(EarlyStopingCallback, self).__init__(name='early_stopping')
+        self.metric_name = metric_name
         self.mode = mode
         self.delta = delta
         self.model = model
         self.path = path
         self.ori_patience = patience
         self.cur_patience = patience
+
 
         self.last_best = None
         self.sign = 1 if mode == 'max' else -1
@@ -89,8 +91,8 @@ class EarlyStopingCallback(Callback):
 
 
     def on_epoch_end(self, context):
-        if context['validation_metric']:
-            value = context['validation_metric']
+        if context[self.metric_name]:
+            value = context[self.metric_name]
             # when first call on_epoch_end
             if self.last_best is None:
                 self.last_best = value
@@ -99,7 +101,7 @@ class EarlyStopingCallback(Callback):
             if self.sign * (value - self.last_best) > self.delta:
                 # better than before
                 self.cur_patience = self.ori_patience
-                torch.save(self.model.state_dict(), self.path)
+                # torch.save(self.model.state_dict(), self.path)
                 self.last_best = value
             else:
                 self.cur_patience -= 1
@@ -120,17 +122,12 @@ class DisplayCallback(Callback):
         self.cur_epoch += 1
 
     def on_epoch_end(self, context):
-        if self.cur_epoch <= 1:
-            table.add_column(epoch, self.cur_epoch)
-            for field in context.get_fields():
-                table.add_column(field, context[field])
-        else:
-            table.add_row([self.cur_epoch] + [context[field] for field in context.get_fields()])
-        print(table)
+        self.table.add_column('epoch', self.cur_epoch)
+        for field in context.get_fields():
+            self.table.add_column(field, context[field])
+        print(self.table)
         if self.to_file:
             with open(self.to_file, 'w', encoding='utf-8') as f:
                 f.write(str(self.table))
+        self.table = prettytable.PrettyTable()
 
-
-class LinearDecay(CallBack):
-    pass
