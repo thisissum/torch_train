@@ -4,10 +4,13 @@ import numpy as np
 import random
 from tqdm import tqdm
 from collections import deque
-from callbacks import CallbackList
-from context import Context
+from .callbacks import CallbackList
+from .context import Context
 
 # TODO: distributed(): set to multi-gpu
+# TODO: 解决callbacks和metrics输入是None和输入不是list的情况
+# TODO: 更改trainer中依赖于context信号进行消息传递的架构，至少避免其出现在主fit循环里
+# TODO: 加入可以每次都保存模型权重的checkpoint回调函数 Done!
 
 class Trainer(object):
     """
@@ -29,6 +32,7 @@ class Trainer(object):
         self.optimizer = optimizer
         self.criterion = criterion
         self.callbacks = CallbackList(callbacks)
+        self.callbacks._check()
         self.metrics = MetricList(metrics) if isinstance(metrics, (list, tuple)) else MetricList([metrics])
         self.setup = True
 
@@ -54,6 +58,7 @@ class Trainer(object):
         context = Context()
         self.callbacks.on_train_start(context)
         for epoch in range(num_epoch):
+            self.metrics.clear()
             self.callbacks.on_epoch_start(context)
             for i, data in enumerate(train_loader):
                 self.callbacks.on_batch_start(context)
@@ -63,6 +68,7 @@ class Trainer(object):
 
             # add validation step
             if validation_loader:
+                self.model.eval()  # change behaivor of batchnorm and dropout
                 with torch.no_grad():
                     for i, data in enumerate(validation_loader):
                         validation_info = self._validation_step(data)
@@ -70,15 +76,19 @@ class Trainer(object):
 
                     metric_info = self.metrics.compute_metric()
                     context.update(metric_info)
+                self.model.train() # back to train mode
 
             self.callbacks.on_epoch_end(context)
-            self.metrics.clear()
 
-            # check early stopping
-            if context['early_stop']:
+            
+            # check save_model
+            if context['save_model']:
                 # load best model to trainer
                 ckpt_path = context['ckpt_path']
-                self.model.load_state_dict(torch.load(ckpt_path, map_location=self.device))
+                torch.save(self.model.state_dict(), ckpt_path)
+            if context['early_stop']:
+                ckpt_path = context['ckpt_path']
+                self.model.load_state_dict(torch.load(ckpt_path))
                 break
 
         self.callbacks.on_train_end(context)

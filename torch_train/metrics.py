@@ -11,14 +11,18 @@ class Metric(object):
     Overwrite function: update_state, save listed data into pred_record and true_record
     """
 
-    def __init__(self, name=None):
+    def __init__(self, name=None, is_validation_metric=False):
         self.pred_record = list()
         self.true_record = list()
         self.cur_metric = None
         self.name = name
+        self.is_validation_metric = is_validation_metric
 
     def get_name(self):
         return self.name
+
+    def set_to_validation(self):
+        self.is_validation_metric = True
 
     def update_state(self, y_pred, y_true):
         pass
@@ -46,6 +50,22 @@ class MetricList(Metric):
     def __init__(self, metrics):
         super(MetricList, self).__init__(name='metric_list')
         self.metrics = metrics if isinstance(metrics, (list, tuple)) else list(metrics)
+        self._check()
+        for m in metrics:
+            if m.is_validation_metric:
+                self.validation_metric = m.name
+        
+    def _check(self):
+        # if all metric is not validation metric, raise error
+        # if validation_metric num >= 2, raise error
+        validation_metric_num = 0
+        for m in self.metrics:
+            if m.is_validation_metric == True:
+                validation_metric_num += 1
+            if validation_metric_num >= 2:
+                raise "Validation metric num over 1"
+        if validation_metric_num == 0:
+            self.metrics[0].set_to_validation()
 
     def update_state(self, y_pred, y_true):
         for metric in self.metrics:
